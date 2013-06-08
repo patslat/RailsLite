@@ -1,17 +1,23 @@
 require 'erb'
 require_relative 'params'
 require_relative 'session'
+require 'erb'
 
 class ControllerBase
   attr_reader :params
 
-  def initialize(req, res, route_params)
+  def initialize(req, res, route_params = {})
     @req = req
     @res = res
     @route_params = route_params
   end
 
   def session
+    @session ||= Session.new(@req)
+  end
+
+  def params
+    @params ||= Params.new(@req, @route_params)
   end
 
   def already_rendered?
@@ -19,28 +25,29 @@ class ControllerBase
   end
 
   def redirect_to(url)
-    if not already_rendered?
-      @response.status = 302
-      @response.header[] # set response
-      @already_rendered = true
-
-    else
-      #already_rendered error?
-    end
+    raise "already rendered" if already_rendered?
+    @res.status = '302'
+    @res["location"] = url
+    @already_rendered = true
+    session.store_session(@res)
   end
 
   def render_content(content, type)
-    if not already_rendered?
-      @response.content_type = body_type
-      @response.body = content
+    raise "already rendered" if already_rendered?
 
-      @already_rendered = true
-    else
-      #already_rendered error?
-    end
+    @res.content_type = type
+    @res.body = content
+
+    @already_rendered = true
+    session.store_session(@res)
   end
 
-  def render(template_name)
+  def render(action_name)
+    controller_name = self.class.to_s.underscore
+    filename = "views/#{controller_name}/#{action_name}.html.erb"
+    template = ERB.new(File.read(filename))
+    content = template.result(binding)
+    render_content(content, 'text/html')
   end
 
   def invoke_action(name)
